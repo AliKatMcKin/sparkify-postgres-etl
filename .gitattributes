@@ -1,3 +1,7 @@
 # Development and verification notebooks are documentation.
 # The deliverable pipeline is etl.py.
 *.ipynb linguist-documentation
+
+# SQL is data language; excluded from language bar by default
+# Reclassifying SQL as programming language to be detected
+*.sql linguist-detectable=true
