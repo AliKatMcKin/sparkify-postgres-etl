@@ -2,16 +2,15 @@
 
 An ETL pipeline that extracts user activity and song metadata from JSON logs, transforms it into a dimensional model, and loads it into a PostgreSQL star schema built for analytical querying.
 
-- **Stack:** Python · PostgreSQL · psycopg2 · pandas
-- **Data:** Song metadata and simulated user activity logs from a music streaming service
+**Stack:** Python · PostgreSQL · psycopg2 · pandas
 
 ---
 
 ## Overview
 
-Sparkify, a music streaming startup, collects listening activity as JSON files. In that form the data cannot be queried or joined, which makes analysis impractical. This project builds the pipeline that turns those files into a relational database the analytics team can actually use.
+Sparkify, a music streaming startup, collects listening activity as JSON files. In that form the data cannot be queried or joined, which makes analysis impractical. This project builds the pipeline that turns those files into a relational database the analytics team can use.
 
-The target design is a star schema: one fact table recording song plays, surrounded by four dimension tables holding descriptive context. This structure keeps analytical queries simple and fast, since answering a question like "which hours of the day see the most paid-tier listening" requires one join rather than several.
+The target design is a star schema: one fact table recording song plays, surrounded by four dimension tables holding descriptive context. This keeps analytical queries simple, since a question like "which hours see the most paid-tier listening" requires one join rather than several.
 
 ## Schema
 
@@ -65,11 +64,11 @@ erDiagram
     songs }o--|| artists : "artist_id"
 ```
 
-`songplays` is the fact table. Each row is one song play event, holding the measurable activity and foreign keys out to the dimensions. The four dimension tables are denormalized on purpose: a star schema trades some redundancy for query simplicity, which is the right trade when the workload is analytical rather than transactional.
+`songplays` is the fact table. Each row is one play event, holding the measurable activity and foreign keys out to the dimensions. The dimension tables are denormalized on purpose, trading some redundancy for query simplicity, which is the right call for an analytical workload.
 
 ## Design Decisions
 
-**Users are upserted, not inserted.** A listener can move between the free and paid tiers, so a plain insert would either fail on the primary key or silently keep a stale subscription level. The user insert uses `ON CONFLICT (user_id) DO UPDATE` so the record reflects the most recent state:
+- **Users are upserted, not inserted.** A listener can move between free and paid tiers, so a plain insert would either fail on the primary key or keep a stale subscription level.
 
 ```sql
 INSERT INTO users (user_id, first_name, last_name, gender, level)
@@ -81,13 +80,11 @@ SET first_name = EXCLUDED.first_name,
     level      = EXCLUDED.level
 ```
 
-**Other tables use `ON CONFLICT DO NOTHING`**, since song, artist, and time records are immutable once written. Re-running the pipeline over the same files is therefore safe and does not duplicate rows.
+- **Other tables use `ON CONFLICT DO NOTHING`.** Song, artist, and time records are immutable once written, so re-running the pipeline over the same files is safe and does not duplicate rows.
 
-**Song and artist IDs on the fact table are nullable.** Matching a play event back to the song catalog requires an exact match on title, artist name, and duration, and the catalog subset does not contain every song that appears in the logs. Rather than dropping unmatched plays, the pipeline records them with null identifiers, which preserves the event and makes the coverage gap measurable instead of invisible.
+- **Song and artist IDs on the fact table are nullable.** Matching a play event to the catalog requires an exact match on title, artist name, and duration, and the catalog subset does not contain every song in the logs. Unmatched plays are recorded with null identifiers rather than dropped, which preserves the event and makes the coverage gap measurable.
 
-**Timestamps are decomposed into a time dimension** at load rather than being derived at query time, so hour-of-day and day-of-week analysis does not require date functions in every query.
-
-**`NOT NULL` constraints are applied selectively** — on fields the schema genuinely depends on, and not on optional metadata like artist latitude and longitude, which is missing for a meaningful share of records.
+- **Timestamps are decomposed into a time dimension at load.** Hour-of-day and day-of-week analysis then requires no date functions at query time.
 
 ## Pipeline
 
@@ -95,22 +92,20 @@ SET first_name = EXCLUDED.first_name,
 |---|---|---|
 | Schema setup | `create_tables.py` | Drops and recreates the database and all five tables |
 | Song ingest | `etl.py` → `process_song_file` | Reads song JSON, populates `songs` and `artists` |
-| Log ingest | `etl.py` → `process_log_file` | Filters to `NextSong` events, decomposes timestamps, populates `time`, `users`, and `songplays` |
+| Log ingest | `etl.py` → `process_log_file` | Filters to `NextSong` events, decomposes timestamps, populates `time`, `users`, `songplays` |
 | Verification | `test.ipynb` | Confirms tables are populated and constraints hold |
 
 `etl.ipynb` is the development notebook where the transformation logic was worked out one file at a time before being generalized into `etl.py`.
 
 ## Setup and Usage
 
-Requires a running PostgreSQL instance and Python 3 with `pandas` and `psycopg2`.
+Requires a running PostgreSQL instance and Python 3.
 
 ```bash
 git clone https://github.com/AliKatMcKin/sparkify-postgres-etl.git
 cd sparkify-postgres-etl
 pip install pandas psycopg2-binary
-```
 
-```bash
 python create_tables.py   # build the schema
 python etl.py             # run the pipeline
 ```
@@ -130,11 +125,11 @@ Then open `test.ipynb` to verify the load.
     └── log_data/      # User activity log JSON
 ```
 
-## Notes and Limitations
+## Limitations
 
-- **Connection parameters are hardcoded** to the local development defaults used during the course. In a production deployment these belong in environment variables or a configuration file rather than in source.
-- **Inserts are row-by-row.** This is readable and correct at this data volume. At production scale, `execute_batch` or `COPY` would be substantially faster.
-- **Song matching is exact-match on three fields**, so the `song_id` and `artist_id` coverage on the fact table is limited by the size of the song catalog subset.
+- Connection parameters are hardcoded to local development defaults. In production these belong in environment variables.
+- Inserts are row-by-row, which is readable and correct at this volume. At scale, `execute_batch` or `COPY` would be substantially faster.
+- Song matching is exact-match on three fields, so `song_id` and `artist_id` coverage on the fact table is limited by the size of the catalog subset.
 - The activity logs are simulated rather than real user data.
 
 ## Attribution
