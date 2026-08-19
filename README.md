@@ -1,9 +1,9 @@
-# Sparkify Postgres ETL — Star Schema Data Modeling
+# Sparkify Postgres ETL | Star Schema Data Modeling
 
 An ETL pipeline that extracts user activity and song metadata from JSON logs, transforms it into a dimensional model, and loads it into a PostgreSQL star schema built for analytical querying.
 
-**Stack:** Python · PostgreSQL · psycopg2 · pandas
-**Data:** Song metadata and simulated user activity logs from a music streaming service
+- **Stack:** Python · PostgreSQL · psycopg2 · pandas
+- **Data:** Song metadata and simulated user activity logs from a music streaming service
 
 ---
 
